@@ -43,12 +43,12 @@ mkdir -p build src
 _tagged=true
 
 if [ "$_tagged" = "true" ] ; then
-    _commit=26.0.6
+    _commit=26.1.2
     _artifact=mesa-$_commit.tar.xz
     _download=https://archive.mesa3d.org/$_artifact
 else
-    _repo=aitor/mesa
-    _commit=3c8e55abd3dd8393f1a7a37c62b4a610f8b0aea7
+    _repo=mesa/mesa
+    _commit=b3d356db66d92ff99ad5b3274569761290232899
     _artifact=mesa-$_commit.tar.gz
     _download="https://gitlab.freedesktop.org/$_repo/-/archive/$_commit/$_artifact"
 fi
@@ -62,8 +62,8 @@ _out="$PWD/install/mesa-$_commit"
 
 export PATH="$LLVM_PREFIX/bin:$PATH"
 
-export CFLAGS="-g1"
-export CXXFLAGS="-g1"
+export CFLAGS="-g1 -fno-asynchronous-unwind-tables"
+export CXXFLAGS="-g1 -fno-asynchronous-unwind-tables"
 export LDFLAGS="-fuse-ld=lld"
 
 export LIBRARY_PATH="${ZSTD_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
@@ -90,6 +90,7 @@ meson setup "$_build" "$_src" \
     -D valgrind=disabled \
     -D gallium-rusticl=false \
     -D static-libclc=all \
+    -D video-codecs=h264dec,vp9dec \
     --native-file brew-llvm.ini \
     --prefer-static
 

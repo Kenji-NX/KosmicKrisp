@@ -10,7 +10,7 @@ permissions:
 
 # TODO(crueter): Extract from script(s)
 env:
-  VERSION: '26.0.6'
+  VERSION: '26.1.2'
 
 jobs:
   build:
@@ -27,8 +27,6 @@ jobs:
         run: |
           tools/mesa.sh
           tools/vulkan.sh
-          tools/moltenvk.sh
-
           tools/package.sh
 
       - name: Upload Artifacts
@@ -45,7 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: Release
-        uses: softprops/action-gh-release@v2.3.2
+        uses: softprops/action-gh-release@v2.6.2
         with:
           name: KosmicKrisp ${{ env.VERSION }}
           tag_name: v${{ env.VERSION }}

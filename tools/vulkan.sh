@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-_tag="1.4.341"
+_tag="1.4.350"
 _repo="KhronosGroup/Vulkan-Loader"
 _dir="Vulkan-Loader-$_tag"
 _artifact="$_tag.tar.gz"
