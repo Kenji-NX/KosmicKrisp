@@ -10,12 +10,12 @@ permissions:
 
 # TODO(crueter): Extract from script(s)
 env:
-  VERSION: '26.1.3'
+  VERSION: '26.1.3-x64'
 
 jobs:
   build:
     name: macOS
-    runs-on: macos-latest
+    runs-on: macos-15-intel
 
     steps:
       - uses: actions/checkout@v4
