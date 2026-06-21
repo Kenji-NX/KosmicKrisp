@@ -43,12 +43,12 @@ mkdir -p build src
 _tagged=true
 
 if [ "$_tagged" = "true" ] ; then
-    _commit=26.1.2
+    _commit=26.1.3
     _artifact=mesa-$_commit.tar.xz
     _download=https://archive.mesa3d.org/$_artifact
 else
     _repo=mesa/mesa
-    _commit=b3d356db66d92ff99ad5b3274569761290232899
+    _commit=6984e91b5fe1d1c204e54954a4282fcdc0c44b78
     _artifact=mesa-$_commit.tar.gz
     _download="https://gitlab.freedesktop.org/$_repo/-/archive/$_commit/$_artifact"
 fi
