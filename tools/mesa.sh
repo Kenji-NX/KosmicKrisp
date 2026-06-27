@@ -51,8 +51,8 @@ _out="$PWD/install/mesa"
 
 export PATH="$LLVM_PREFIX/bin:$PATH"
 
-export CFLAGS="-g1"
-export CXXFLAGS="-g1"
+export CFLAGS="-g1 -fno-asynchronous-unwind-tables"
+export CXXFLAGS="-g1 -fno-asynchronous-unwind-tables"
 export LDFLAGS="-fuse-ld=lld"
 
 export LIBRARY_PATH="${ZSTD_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
