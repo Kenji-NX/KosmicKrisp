@@ -40,30 +40,19 @@ EOF
 cat brew-llvm.ini
 
 mkdir -p build src
-_tagged=true
 
-if [ "$_tagged" = "true" ] ; then
-    _commit=26.1.3
-    _artifact=mesa-$_commit.tar.xz
-    _download=https://archive.mesa3d.org/$_artifact
-else
-    _repo=mesa/mesa
-    _commit=6984e91b5fe1d1c204e54954a4282fcdc0c44b78
-    _artifact=mesa-$_commit.tar.gz
-    _download="https://gitlab.freedesktop.org/$_repo/-/archive/$_commit/$_artifact"
-fi
+_commit=ce6647daa543690eff8a72c080eee118fb1a63bf
+git clone https://gitlab.freedesktop.org/mesa/mesa src/mesa
+cd src/mesa && git checkout $_commit && cd ../..
 
-_src="$PWD/src/mesa-$_commit"
-_build="$PWD/build/mesa-$_commit"
-_out="$PWD/install/mesa-$_commit"
-
-[ -f $_artifact ] || curl "$_download" -o $_artifact --fail
-[ -d "$_build" ] || tar xf $_artifact -C src
+_src="$PWD/src/mesa"
+_build="$PWD/build/mesa"
+_out="$PWD/install/mesa"
 
 export PATH="$LLVM_PREFIX/bin:$PATH"
 
-export CFLAGS="-g1 -fno-asynchronous-unwind-tables"
-export CXXFLAGS="-g1 -fno-asynchronous-unwind-tables"
+export CFLAGS="-g1"
+export CXXFLAGS="-g1"
 export LDFLAGS="-fuse-ld=lld"
 
 export LIBRARY_PATH="${ZSTD_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
@@ -90,7 +79,7 @@ meson setup "$_build" "$_src" \
     -D valgrind=disabled \
     -D gallium-rusticl=false \
     -D static-libclc=all \
-    -D video-codecs=h264dec,vp9dec \
+    -D video-codecs= \
     --native-file brew-llvm.ini \
     --prefer-static
 
