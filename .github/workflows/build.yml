@@ -10,7 +10,7 @@ permissions:
 
 # TODO(crueter): Extract from script(s)
 env:
-  VERSION: '26.2+ce6647da'
+  VERSION: '26.2+d3c2dab2'
 
 jobs:
   build:
