@@ -8,14 +8,13 @@ on:
 permissions:
   contents: write
 
-# TODO(crueter): Extract from script(s)
 env:
-  VERSION: '26.2+d3c2dab2'
+  VERSION: '26.2+e8ab81cc'
 
 jobs:
   build:
     name: macOS
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - uses: actions/checkout@v4
