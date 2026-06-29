@@ -1,13 +1,15 @@
 #!/bin/sh -e
 
-_commit=3684a76e07d011714368a29822de326485f32125
-_repo=crueter/SPIRV-Tools
+_commit=0539c81f69a3daeb706fd3477dca61435b475156
+_repo=KhronosGroup/SPIRV-Tools
 _dir=SPIRV-Tools-$_commit
 _artifact=$_commit.tar.gz
 _url=https://github.com/$_repo/archive/$_artifact
 
 CCACHE="$(which ccache)"
 
+_version="1.4.350.1"
+_tag="vulkan-sdk-$_version"
 _src="$PWD"/src
 _build="$PWD"/build/$_dir
 _out="$PWD"/install/$_dir
@@ -21,7 +23,7 @@ if [ ! -d "$_out" ]; then
     [ -f $_artifact ] || curl -L "$_url" -o "$_artifact"
     [ -d "$_src"/$_dir ] || tar xf $_artifact -C "$_src"
 
-    [ -d "$_headers_dir" ] || git clone "$_headers" "$_headers_dir"
+    [ -d "$_headers_dir" ] || git clone --branch "$_tag" "$_headers" "$_headers_dir"
 
     cmake -S "$_src/$_dir" -B "$_build" \
         -DSPIRV_TOOLS_BUILD_SHARED=OFF \
