@@ -41,9 +41,9 @@ cat brew-llvm.ini
 
 mkdir -p build src
 
-_commit=e8ab81cc3a1c35090e1534f356b8315456ba91a9
+_commit=6984e91b5fe1d1c204e54954a4282fcdc0c44b78
 git clone https://gitlab.freedesktop.org/mesa/mesa src/mesa
-cd src/mesa && git checkout $_commit && cd ../..
+cd src/mesa && git checkout $_commit && git apply -v ../../patches/*.patch && cd ../..
 
 _src="$PWD/src/mesa"
 _build="$PWD/build/mesa"
@@ -64,7 +64,7 @@ if [ "${DEBUG:-false}" = 'true' ]; then
     BUILD_TYPE=debug
 else
     NDEBUG=true
-    BUILD_TYPE=release
+    BUILD_TYPE=minsize
 fi
 
 echo "-- Making $BUILD_TYPE build"

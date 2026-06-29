@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  VERSION: '26.2+e8ab81cc'
+  VERSION: '26.1.3-metal4'
 
 jobs:
   build:
