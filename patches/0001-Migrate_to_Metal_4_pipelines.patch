@@ -6,8 +6,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/meson.build b/src/kosmickrisp/bridge/meson.build
---- a/src/kosmickrisp/bridge/meson.build	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/meson.build	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/meson.build	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/meson.build	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -14,11 +14,10 @@
      'mtl_buffer.m',
      'mtl_command_buffer.m',
@@ -40,8 +40,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_bridge.h b/src/kosmickrisp/bridge/mtl_bridge.h
---- a/src/kosmickrisp/bridge/mtl_bridge.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/mtl_bridge.h	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/mtl_bridge.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/mtl_bridge.h	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -24,12 +24,11 @@
  #include "mtl_buffer.h"
  #include "mtl_command_buffer.h"
@@ -63,8 +63,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_compiler.h b/src/kosmickrisp/bridge/mtl_compiler.h
 new file mode 100644
---- /dev/null	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
-+++ b/src/kosmickrisp/bridge/mtl_compiler.h	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- /dev/null	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
++++ b/src/kosmickrisp/bridge/mtl_compiler.h	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -0,0 +1,70 @@
 +/*
 + * Copyright 2025 LunarG, Inc.
@@ -143,8 +143,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_compiler.m b/src/kosmickrisp/bridge/mtl_compiler.m
 new file mode 100644
---- /dev/null	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
-+++ b/src/kosmickrisp/bridge/mtl_compiler.m	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- /dev/null	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
++++ b/src/kosmickrisp/bridge/mtl_compiler.m	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -0,0 +1,224 @@
 +/*
 + * Copyright 2025 LunarG, Inc.
@@ -376,8 +376,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_device.m b/src/kosmickrisp/bridge/mtl_device.m
---- a/src/kosmickrisp/bridge/mtl_device.m	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/mtl_device.m	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/mtl_device.m	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/mtl_device.m	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -17,18 +17,16 @@
  mtl_device *
  mtl_device_create()
@@ -407,8 +407,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_render_state.h b/src/kosmickrisp/bridge/mtl_render_state.h
---- a/src/kosmickrisp/bridge/mtl_render_state.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/mtl_render_state.h	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/mtl_render_state.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/mtl_render_state.h	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -76,49 +76,6 @@
  void mtl_render_pass_descriptor_set_visibility_buffer(
     mtl_render_pass_descriptor *descriptor, mtl_buffer *visibility_buffer);
@@ -465,8 +465,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_render_state.m b/src/kosmickrisp/bridge/mtl_render_state.m
---- a/src/kosmickrisp/bridge/mtl_render_state.m	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/mtl_render_state.m	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/mtl_render_state.m	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/mtl_render_state.m	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -15,7 +15,6 @@
  #include "vulkan/vulkan.h"
  
@@ -625,8 +625,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_types.h b/src/kosmickrisp/bridge/mtl_types.h
---- a/src/kosmickrisp/bridge/mtl_types.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/mtl_types.h	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/mtl_types.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/mtl_types.h	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -30,7 +30,7 @@
  typedef void mtl_compute_pipeline_state;
  typedef void mtl_library;
@@ -651,8 +651,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/stubs/mtl_compiler.c b/src/kosmickrisp/bridge/stubs/mtl_compiler.c
 new file mode 100644
---- /dev/null	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
-+++ b/src/kosmickrisp/bridge/stubs/mtl_compiler.c	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- /dev/null	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
++++ b/src/kosmickrisp/bridge/stubs/mtl_compiler.c	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -0,0 +1,110 @@
 +/*
 + * Copyright 2025 LunarG, Inc.
@@ -770,8 +770,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/stubs/mtl_render_state.c b/src/kosmickrisp/bridge/stubs/mtl_render_state.c
---- a/src/kosmickrisp/bridge/stubs/mtl_render_state.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/bridge/stubs/mtl_render_state.c	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/bridge/stubs/mtl_render_state.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/bridge/stubs/mtl_render_state.c	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -120,89 +120,6 @@
  {
  }
@@ -868,8 +868,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/vulkan/kk_device.c b/src/kosmickrisp/vulkan/kk_device.c
---- a/src/kosmickrisp/vulkan/kk_device.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/vulkan/kk_device.c	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/vulkan/kk_device.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/vulkan/kk_device.c	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -215,11 +215,16 @@
     dev->vk.command_dispatch_table = &dev->vk.dispatch_table;
     dev->vk.get_timestamp = kk_get_timestamp;
@@ -912,8 +912,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/vulkan/kk_device.h b/src/kosmickrisp/vulkan/kk_device.h
---- a/src/kosmickrisp/vulkan/kk_device.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/vulkan/kk_device.h	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/vulkan/kk_device.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/vulkan/kk_device.h	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -79,6 +79,7 @@
     struct vk_device vk;
  
@@ -928,8 +928,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/vulkan/kk_device_lib.c b/src/kosmickrisp/vulkan/kk_device_lib.c
---- a/src/kosmickrisp/vulkan/kk_device_lib.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/vulkan/kk_device_lib.c	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/vulkan/kk_device_lib.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/vulkan/kk_device_lib.c	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -27,20 +27,20 @@
        const struct kk_precompiled_info *info = (void *)bin;
        const char *msl = (const char *)bin + sizeof(*info);
@@ -961,8 +961,8 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
 diff --git a/src/kosmickrisp/vulkan/kk_shader.c b/src/kosmickrisp/vulkan/kk_shader.c
---- a/src/kosmickrisp/vulkan/kk_shader.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ b/src/kosmickrisp/vulkan/kk_shader.c	(revision da2abc67c7f27800229ce65a562e9ecee7691840)
+--- a/src/kosmickrisp/vulkan/kk_shader.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ b/src/kosmickrisp/vulkan/kk_shader.c	(revision ebae53262483f5892a89dd1ec19e1860b4a3184d)
 @@ -567,6 +567,7 @@
  
     if (shader->info.stage == MESA_SHADER_COMPUTE) {
@@ -1047,8 +1047,8 @@ Index: src/kosmickrisp/bridge/mtl_compute_state.h
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_compute_state.h b/src/kosmickrisp/bridge/mtl_compute_state.h
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/mtl_compute_state.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/mtl_compute_state.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,13 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.
@@ -1068,8 +1068,8 @@ Index: src/kosmickrisp/bridge/mtl_compute_state.m
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_compute_state.m b/src/kosmickrisp/bridge/mtl_compute_state.m
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/mtl_compute_state.m	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/mtl_compute_state.m	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,29 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.
@@ -1104,8 +1104,8 @@ Index: src/kosmickrisp/bridge/mtl_library.h
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_library.h b/src/kosmickrisp/bridge/mtl_library.h
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/mtl_library.h	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/mtl_library.h	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,16 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.
@@ -1127,8 +1127,8 @@ Index: src/kosmickrisp/bridge/mtl_library.m
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/mtl_library.m b/src/kosmickrisp/bridge/mtl_library.m
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/mtl_library.m	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/mtl_library.m	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,43 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.
@@ -1177,8 +1177,8 @@ Index: src/kosmickrisp/bridge/stubs/mtl_compute_state.c
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/stubs/mtl_compute_state.c b/src/kosmickrisp/bridge/stubs/mtl_compute_state.c
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/stubs/mtl_compute_state.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/stubs/mtl_compute_state.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,14 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.
@@ -1198,8 +1198,8 @@ Index: src/kosmickrisp/bridge/stubs/mtl_library.c
 ===================================================================
 diff --git a/src/kosmickrisp/bridge/stubs/mtl_library.c b/src/kosmickrisp/bridge/stubs/mtl_library.c
 deleted file mode 100644
---- a/src/kosmickrisp/bridge/stubs/mtl_library.c	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
-+++ /dev/null	(revision bfce4dd45aa8658ca8a66d3a14ed9297fbab4a54)
+--- a/src/kosmickrisp/bridge/stubs/mtl_library.c	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
++++ /dev/null	(revision e462dccfda8beedce204b3a7dfb76a2a9091aaf6)
 @@ -1,19 +0,0 @@
 -/*
 - * Copyright 2025 LunarG, Inc.

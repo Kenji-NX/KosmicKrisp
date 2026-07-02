@@ -41,7 +41,7 @@ cat brew-llvm.ini
 
 mkdir -p build src
 
-_commit=6984e91b5fe1d1c204e54954a4282fcdc0c44b78
+_commit=e462dccfda8beedce204b3a7dfb76a2a9091aaf6
 git clone https://gitlab.freedesktop.org/mesa/mesa src/mesa
 cd src/mesa && git checkout $_commit && git apply -v ../../patches/*.patch && cd ../..
 
