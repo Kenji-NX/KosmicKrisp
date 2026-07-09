@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  VERSION: '26.1.4'
+  VERSION: '26.1.4-ryujinx'
 
 jobs:
   build:
