@@ -1,0 +1,1197 @@
+Subject: [PATCH] KosmicKrisp 2026-07-10 to 2026-07-13
+kk: Metal's precise functions are only fp32
+kk: Use safe math for nir_fp_no_reassoc
+kk: Implement VK_KHR_shader_float_controls2
+kk: Refactor encoder state
+kk: Expose shaderSignedZeroInfNanPreserveFloat16/32
+kk: Compile all shaders with fast math
+kk: Use isnan(x) for x != x and !isnan(x) for x == x
+kk: Handle per alu math controls in MSL
+kk: Fix metal import assert
+---
+Index: src/kosmickrisp/vulkan/kk_device_memory.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_device_memory.c b/src/kosmickrisp/vulkan/kk_device_memory.c
+--- a/src/kosmickrisp/vulkan/kk_device_memory.c	(revision 1bedd493343a07be929cdf78f564d0d34dfd98fb)
++++ b/src/kosmickrisp/vulkan/kk_device_memory.c	(revision f56ea39a0b2eed412eb9f1c3b7c9d5e43cf27b41)
+@@ -112,8 +112,6 @@
+    bool import_host = host_info && host_info->handleType;
+ 
+    if (import_metal || import_host) {
+-      assert(metal_info->handleType ==
+-             VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLHEAP_BIT_EXT);
+       mem->bo = CALLOC_STRUCT(kk_bo);
+       if (!mem->bo) {
+          result = vk_errorf(&dev->vk.base, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
+@@ -121,6 +119,9 @@
+       }
+ 
+       if (import_metal) {
++         assert(metal_info->handleType ==
++                VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLHEAP_BIT_EXT);
++
+          /* We only support heaps since that's the backing for all our memory
+           * and simplifies implementation */
+          mem->bo->mtl_handle = mtl_retain(metal_info->handle);
+Index: src/kosmickrisp/compiler/nir_to_msl.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/compiler/nir_to_msl.c b/src/kosmickrisp/compiler/nir_to_msl.c
+--- a/src/kosmickrisp/compiler/nir_to_msl.c	(revision f56ea39a0b2eed412eb9f1c3b7c9d5e43cf27b41)
++++ b/src/kosmickrisp/compiler/nir_to_msl.c	(revision c1029b3e18d157e4210cd7917728ca8f5126861b)
+@@ -234,16 +234,45 @@
+ }
+ 
+ static void
+-alu_to_msl(struct nir_to_msl_ctx *ctx, nir_alu_instr *instr)
++alu_funclike_precise(struct nir_to_msl_ctx *ctx, nir_alu_instr *instr,
++                     const char *name)
+ {
++   /* Metal's precise:: functions are fp32 only */
++   if (instr->def.bit_size == 32 && (nir_alu_instr_is_inf_preserve(instr) ||
++                                     nir_alu_instr_is_nan_preserve(instr)))
++      P(ctx, "precise::");
++
++   alu_funclike(ctx, instr, name);
++}
+ 
+ #define ALU_BINOP(op)                                                          \
+    do {                                                                        \
+       alu_src_to_msl(ctx, instr, 0);                                           \
+       P(ctx, " %s ", op);                                                      \
+       alu_src_to_msl(ctx, instr, 1);                                           \
+-   } while (0);
++   } while (0)
+ 
++static void
++alu_fcmp_to_msl(struct nir_to_msl_ctx *ctx, nir_alu_instr *instr,
++                const char *op)
++{
++   /* KK_WORKAROUND_14 Since comparison operations must always preserve NANs,
++    * this is always applied */
++   if (!(ctx->disabled_workarounds & BITFIELD64_BIT(14))) {
++      /* fneu is unordered (true on NaN), the others are ordered. */
++      bool ordered = instr->op != nir_op_fneu;
++      for (unsigned i = 0; i < 2; i++) {
++         P(ctx, ordered ? "!isnan(" : "isnan(");
++         alu_src_to_msl(ctx, instr, i);
++         P(ctx, ordered ? ") && " : ") || ");
++      }
++   }
++   ALU_BINOP(op);
++}
++
++static void
++alu_to_msl(struct nir_to_msl_ctx *ctx, nir_alu_instr *instr)
++{
+    switch (instr->op) {
+    case nir_op_isign:
+       alu_src_to_msl(ctx, instr, 0);
+@@ -265,6 +294,10 @@
+       break;
+    case nir_op_imul:
+    case nir_op_fmul:
++      if (!(ctx->disabled_workarounds & BITFIELD64_BIT(14)) &&
++          (nir_alu_instr_is_inf_preserve(instr) ||
++           nir_alu_instr_is_nan_preserve(instr)))
++         P(ctx, "!&buf0.contents[0] ? 1 : ")
+       ALU_BINOP("*");
+       break;
+    case nir_op_idiv:
+@@ -284,13 +317,17 @@
+       break;
+    case nir_op_ige:
+    case nir_op_uge:
+-   case nir_op_fge:
+       ALU_BINOP(">=");
++      break;
++   case nir_op_fge:
++      alu_fcmp_to_msl(ctx, instr, ">=");
+       break;
+    case nir_op_ilt:
+    case nir_op_ult:
++      ALU_BINOP("<");
++      break;
+    case nir_op_flt:
+-      ALU_BINOP("<")
++      alu_fcmp_to_msl(ctx, instr, "<");
+       break;
+    case nir_op_iand:
+       ALU_BINOP("&");
+@@ -318,12 +355,28 @@
+       alu_funclike(ctx, instr, "clz");
+       break;
+    case nir_op_ieq:
+-   case nir_op_feq:
+       ALU_BINOP("==");
++      break;
++   case nir_op_feq:
++      /* "x == x" is a special case checking for non-NANs */
++      if (nir_alu_srcs_equal(instr, instr, 0, 1)) {
++         P(ctx, "!isnan(");
++         alu_src_to_msl(ctx, instr, 0);
++         P(ctx, ")");
++      } else
++         alu_fcmp_to_msl(ctx, instr, "==");
+       break;
+    case nir_op_ine:
+-   case nir_op_fneu:
+       ALU_BINOP("!=");
++      break;
++   case nir_op_fneu:
++      /* "x != x" is a special case checking for NANs */
++      if (nir_alu_srcs_equal(instr, instr, 0, 1)) {
++         P(ctx, "isnan(");
++         alu_src_to_msl(ctx, instr, 0);
++         P(ctx, ")");
++      } else
++         alu_fcmp_to_msl(ctx, instr, "!=");
+       break;
+    case nir_op_umax:
+    case nir_op_imax:
+@@ -357,13 +410,13 @@
+    /* Functions from <metal_math> */
+    case nir_op_iabs:
+    case nir_op_fabs:
+-      alu_funclike(ctx, instr, "abs");
++      alu_funclike_precise(ctx, instr, "abs");
+       break;
+    case nir_op_fceil:
+-      alu_funclike(ctx, instr, "ceil");
++      alu_funclike_precise(ctx, instr, "ceil");
+       break;
+    case nir_op_fcos:
+-      alu_funclike(ctx, instr, "cos");
++      alu_funclike_precise(ctx, instr, "cos");
+       break;
+    case nir_op_fdot2:
+    case nir_op_fdot3:
+@@ -371,19 +424,26 @@
+       alu_funclike(ctx, instr, "dot");
+       break;
+    case nir_op_fexp2:
+-      alu_funclike(ctx, instr, "exp2");
++      alu_funclike_precise(ctx, instr, "exp2");
+       break;
+    case nir_op_ffloor:
+-      alu_funclike(ctx, instr, "floor");
++      alu_funclike_precise(ctx, instr, "floor");
+       break;
+    case nir_op_ffma:
+-      alu_funclike(ctx, instr, "fma");
++      alu_funclike_precise(ctx, instr, "fma");
+       break;
+    case nir_op_ffract:
+-      alu_funclike(ctx, instr, "fract");
++      /* Metal's fract returns values [0, 1] disregarding INFs and NANs */
++      if (nir_alu_instr_is_inf_preserve(instr) ||
++          nir_alu_instr_is_nan_preserve(instr)) {
++         alu_src_to_msl(ctx, instr, 0);
++         P(ctx, " - ");
++         alu_funclike(ctx, instr, "floor");
++      } else
++         alu_funclike(ctx, instr, "fract");
+       break;
+    case nir_op_flog2:
+-      alu_funclike(ctx, instr, "log2");
++      alu_funclike_precise(ctx, instr, "log2");
+       break;
+    case nir_op_flrp:
+       /* Metal defines mix as "a + (b – a) * c" OR "a * (1 - c) + b * c". The
+@@ -404,47 +464,75 @@
+        * Test that caught the issue:
+        * dEQP-VK.spirv_assembly.instruction.compute.float_controls2.fp*.input_args.reflect_testedWithout_NSZ_arg1_minusZero_arg2_one_res_minusZero_*
+        */
+-      if (nir_alu_instr_is_signed_zero_preserve(instr)) {
++      if (nir_alu_instr_is_signed_zero_preserve(instr) ||
++          nir_alu_instr_is_inf_preserve(instr) ||
++          nir_alu_instr_is_nan_preserve(instr)) {
+          alu_src_to_msl(ctx, instr, 0);
+          P(ctx, " + (");
+          alu_src_to_msl(ctx, instr, 1);
+          P(ctx, " - ");
+          alu_src_to_msl(ctx, instr, 0);
+-         P(ctx, ") * ");
++         P(ctx, ") * (");
++         if (!(ctx->disabled_workarounds & BITFIELD64_BIT(14)) &&
++             (nir_alu_instr_is_inf_preserve(instr) ||
++              nir_alu_instr_is_nan_preserve(instr)))
++            P(ctx, "!&buf0.contents[0] ? 1 : ")
+          alu_src_to_msl(ctx, instr, 2);
++         P(ctx, ")");
+       } else {
+          alu_funclike(ctx, instr, "mix");
+       }
+       break;
+    case nir_op_fmax:
+-      alu_funclike(ctx, instr, "fmax");
+-      break;
+-   case nir_op_fmin:
+-      alu_funclike(ctx, instr, "fmin");
++   case nir_op_fmin: {
++      /* Metal does not preserve signed zeroes for min/max, do that ourselves
++       * by convertin min(x, y) to:
++       * "x == y ? as_type<floatT>(uintT(as_type<uintT>(x) | as_type<uintT>(y)))
++       *         : fmin(x, y)"
++       * and max(x, y) to:
++       * "x == y ? as_type<floatT>(uintT(as_type<uintT>(x) & as_type<uintT>(y)))
++       *         : fmax(x, y)"
++       *
++       * The "uintT(bitwise OR/AND)" is needed otherwise Metal will promote the
++       * value to int which then won't be able to demote for 16-bit values...
++       */
++      const bool is_min = instr->op == nir_op_fmin;
++      if (nir_alu_instr_is_signed_zero_preserve(instr)) {
++         const char *ftype = msl_type_for_def(ctx->types, &instr->def);
++         const char *utype = msl_uint_type(instr->def.bit_size, 1);
++         alu_fcmp_to_msl(ctx, instr, "==");
++         P(ctx, " ? as_type<%s>(%s(as_type<%s>(", ftype, utype, utype);
++         alu_src_to_msl(ctx, instr, 0);
++         P(ctx, ") %s as_type<%s>(", is_min ? "|" : "&", utype);
++         alu_src_to_msl(ctx, instr, 1);
++         P(ctx, "))) : ");
++      }
++      alu_funclike_precise(ctx, instr, is_min ? "fmin" : "fmax");
+       break;
++   }
+    case nir_op_frem:
+-      alu_funclike(ctx, instr, "fmod");
++      alu_funclike_precise(ctx, instr, "fmod");
+       break;
+    case nir_op_fpow:
+-      alu_funclike(ctx, instr, "pow");
++      alu_funclike_precise(ctx, instr, "pow");
+       break;
+    case nir_op_fround_even:
+       alu_funclike(ctx, instr, "rint");
+       break;
+    case nir_op_frsq:
+-      alu_funclike(ctx, instr, "rsqrt");
++      alu_funclike_precise(ctx, instr, "rsqrt");
+       break;
+    case nir_op_fsign:
+       alu_funclike(ctx, instr, "sign");
+       break;
+    case nir_op_fsqrt:
+-      alu_funclike(ctx, instr, "sqrt");
++      alu_funclike_precise(ctx, instr, "sqrt");
+       break;
+    case nir_op_fsin:
+-      alu_funclike(ctx, instr, "sin");
++      alu_funclike_precise(ctx, instr, "sin");
+       break;
+    case nir_op_ldexp:
+-      alu_funclike(ctx, instr, "ldexp");
++      alu_funclike_precise(ctx, instr, "ldexp");
+       break;
+    case nir_op_ftrunc:
+       alu_funclike(ctx, instr, "trunc");
+@@ -548,6 +636,8 @@
+    }
+ }
+ 
++#undef ALU_BINOP
++
+ static const char *
+ texture_dim(enum glsl_sampler_dim dim)
+ {
+@@ -1916,15 +2006,50 @@
+    }
+ }
+ 
++static const char *
++alu_fp_math_mode_pragma(const nir_alu_instr *alu)
++{
++   unsigned fp_math_ctrl = alu->fp_math_ctrl;
++
++   /* TODO_KOSMICKRISP Investigate why bcsel do not have inf nan preserve */
++   if (alu->op == nir_op_bcsel) {
++      for (unsigned i = 0; i < 3; i++) {
++         const nir_instr *parent = nir_def_instr(alu->src[i].src.ssa);
++         if (parent->type == nir_instr_type_alu) {
++            const nir_alu_instr *src_alu = nir_instr_as_alu(parent);
++            fp_math_ctrl |= src_alu->fp_math_ctrl;
++         }
++      }
++   }
++
++   if (fp_math_ctrl & (nir_fp_no_contract | nir_fp_no_reassoc))
++      return "safe";
++
++   /* TODO_KOSMICKRISP nir_fp_preserve_signed_zero should be preserved even if
++    * fast math, but we are just being overly cautious here, probably not
++    * needed. */
++   if (fp_math_ctrl & (nir_fp_preserve_inf | nir_fp_preserve_nan |
++                       nir_fp_preserve_signed_zero))
++      return "relaxed";
++   return NULL;
++}
++
+ static void
+ instr_to_msl(struct nir_to_msl_ctx *ctx, nir_instr *instr)
+ {
+    switch (instr->type) {
+    case nir_instr_type_alu: {
+       nir_alu_instr *alu = nir_instr_as_alu(instr);
++      const char *math_mode = alu_fp_math_mode_pragma(alu);
++      if (math_mode) {
++         P_IND(ctx, "{\n");
++         P_IND(ctx, "#pragma METAL fp math_mode(%s)\n", math_mode);
++      }
+       P_IND(ctx, "t%d = ", alu->def.index);
+       alu_to_msl(ctx, alu);
+       P(ctx, ";\n");
++      if (math_mode)
++         P_IND(ctx, "}\n");
+       break;
+    }
+    case nir_instr_type_deref:
+Index: src/kosmickrisp/bridge/mtl_compiler.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/bridge/mtl_compiler.h b/src/kosmickrisp/bridge/mtl_compiler.h
+--- a/src/kosmickrisp/bridge/mtl_compiler.h	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/bridge/mtl_compiler.h	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -19,7 +19,10 @@
+ mtl_compiler *mtl_new_compiler(mtl_device *device);
+ 
+ /* Library */
+-mtl_library *mtl_new_library(mtl_compiler *compiler, const char *src);
++mtl_library *
++mtl_new_library(mtl_compiler *compiler, const char *src,
++                enum mtl_math_mode math_mode,
++                enum mtl_math_floating_point_functions math_fp_fns);
+ mtl_function_descriptor *
+ mtl_new_library_function_descriptor(mtl_library *library,
+                                     const char *entry_point);
+Index: src/kosmickrisp/bridge/mtl_compiler.m
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/bridge/mtl_compiler.m b/src/kosmickrisp/bridge/mtl_compiler.m
+--- a/src/kosmickrisp/bridge/mtl_compiler.m	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/bridge/mtl_compiler.m	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -35,7 +35,9 @@
+ 
+ /* Library */
+ mtl_library *
+-mtl_new_library(mtl_compiler *compiler, const char *src)
++mtl_new_library(mtl_compiler *compiler, const char *src,
++                enum mtl_math_mode math_mode,
++                enum mtl_math_floating_point_functions math_fp_fns)
+ {
+    @autoreleasepool {
+       id<MTL4Compiler> comp = (id<MTL4Compiler>)compiler;
+@@ -46,8 +48,8 @@
+        * dEQP-VK.spirv_assembly.instruction.graphics.float16.logical.opisnan_vector_vert
+        * on M1/2 */
+       opts.languageVersion = MTLLanguageVersion3_2;
+-      opts.mathMode = MTLMathModeSafe;
+-      opts.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
++      opts.mathMode = (MTLMathMode)math_mode;
++      opts.mathFloatingPointFunctions = (MTLMathFloatingPointFunctions)math_fp_fns;
+ 
+       MTL4LibraryDescriptor *desc = [[MTL4LibraryDescriptor new] autorelease];
+       desc.source = ns_src;
+Index: src/kosmickrisp/bridge/mtl_types.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/bridge/mtl_types.h b/src/kosmickrisp/bridge/mtl_types.h
+--- a/src/kosmickrisp/bridge/mtl_types.h	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/bridge/mtl_types.h	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -290,6 +290,17 @@
+    MTL_COMMAND_QUEUE_ERROR_INTERNAL = 6,
+ };
+ 
++enum mtl_math_mode {
++   MTL_MATH_MODE_SAFE = 0,
++   MTL_MATH_MODE_RELAXED = 1,
++   MTL_MATH_MODE_FAST = 2,
++};
++
++enum mtl_math_floating_point_functions {
++   MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST = 0,
++   MTL_MATH_FLOATING_POINT_FUNCTIONS_PRECISE = 1,
++};
++
+ /** STRUCTURES */
+ struct mtl_range {
+    size_t offset;
+Index: src/kosmickrisp/bridge/stubs/mtl_compiler.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/bridge/stubs/mtl_compiler.c b/src/kosmickrisp/bridge/stubs/mtl_compiler.c
+--- a/src/kosmickrisp/bridge/stubs/mtl_compiler.c	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/bridge/stubs/mtl_compiler.c	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -17,7 +17,9 @@
+ 
+ /* Library */
+ mtl_library *
+-mtl_new_library(mtl_compiler *compiler, const char *src)
++mtl_new_library(mtl_compiler *compiler, const char *src,
++                enum mtl_math_mode math_mode,
++                enum mtl_math_floating_point_functions math_fp_fns)
+ {
+    return NULL;
+ }
+Index: src/kosmickrisp/vulkan/kk_device_lib.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_device_lib.c b/src/kosmickrisp/vulkan/kk_device_lib.c
+--- a/src/kosmickrisp/vulkan/kk_device_lib.c	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/vulkan/kk_device_lib.c	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -26,7 +26,9 @@
+       const struct kk_precompiled_info *info = (void *)bin;
+       const char *msl = (const char *)bin + sizeof(*info);
+ 
+-      mtl_library *library = mtl_new_library(dev->mtl_compiler_handle, msl);
++      mtl_library *library =
++         mtl_new_library(dev->mtl_compiler_handle, msl, MTL_MATH_MODE_FAST,
++                         MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST);
+       if (library == NULL)
+          goto fail;
+ 
+Index: src/kosmickrisp/vulkan/kk_shader.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_shader.c b/src/kosmickrisp/vulkan/kk_shader.c
+--- a/src/kosmickrisp/vulkan/kk_shader.c	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/vulkan/kk_shader.c	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -658,13 +658,15 @@
+ 
+       /* Serialization data. */
+       u_foreach_bit(i, shader->info.vs.additional_stages_bits) {
+-         ralloc_free((void *)shader->entrypoint_names[i]);
+-         ralloc_free((void *)shader->msl_shaders[i]);
++         struct msl_compile_data *data = &shader->msl_data[i];
++         ralloc_free((void *)data->entrypoint_name);
++         ralloc_free((void *)data->code);
+       }
+    }
+ 
+-   ralloc_free((void *)shader->entrypoint_names[shader->info.stage]);
+-   ralloc_free((void *)shader->msl_shaders[shader->info.stage]);
++   struct msl_compile_data *data = &shader->msl_data[shader->info.stage];
++   ralloc_free((void *)data->entrypoint_name);
++   ralloc_free((void *)data->code);
+ 
+    vk_shader_free(&dev->vk, pAllocator, &shader->vk);
+ }
+@@ -862,17 +864,18 @@
+          }
+       }
+    }
+-   shader->msl_shaders[stage] = nir_to_msl(nir, &translate_options);
++   struct msl_compile_data *data = &shader->msl_data[stage];
++   data->code = nir_to_msl(nir, &translate_options);
+    const char *entrypoint_name = nir_shader_get_entrypoint(nir)->function->name;
+ 
+    /* We need to steal so it doesn't get destroyed with the nir. Needs to happen
+     * after nir_to_msl since that's where we rename the entrypoint.
+     */
+    ralloc_steal(NULL, (void *)entrypoint_name);
+-   shader->entrypoint_names[stage] = (char *)entrypoint_name;
++   data->entrypoint_name = (char *)entrypoint_name;
+ 
+    if (KK_DEBUG(MSL))
+-      mesa_logi("%s\n", shader->msl_shaders[stage]);
++      mesa_logi("%s\n", data->code);
+ 
+    ralloc_free(nir);
+ 
+@@ -971,17 +974,19 @@
+ }
+ 
+ static VkResult
+-kk_compile_compute_pipeline(struct kk_device *device, const char *msl,
+-                            const char *entrypoint_name,
++kk_compile_compute_pipeline(struct kk_device *device,
++                            const struct msl_compile_data *data,
+                             uint32_t local_size_threads,
+                             mtl_compute_pipeline_state **pipe)
+ {
+-   mtl_library *library = mtl_new_library(device->mtl_compiler_handle, msl);
++   mtl_library *library = mtl_new_library(
++      device->mtl_compiler_handle, data->code, MTL_MATH_MODE_FAST,
++      MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST);
+    if (library == NULL)
+       return VK_ERROR_INVALID_SHADER_NV;
+ 
+    mtl_function_descriptor *function =
+-      mtl_new_library_function_descriptor(library, entrypoint_name);
++      mtl_new_library_function_descriptor(library, data->entrypoint_name);
+    mtl_compute_pipeline_state *pipeline = mtl_new_compute_pipeline_state(
+       device->mtl_compiler_handle, function, local_size_threads);
+    mtl_release(function);
+@@ -1154,13 +1159,15 @@
+    for (uint32_t i = 1; i < shader_count; ++i) {
+       struct kk_shader *s = shaders[i];
+       mesa_shader_stage stage = s->info.stage;
+-      uint32_t length = strlen(s->msl_shaders[stage]) + 1u;
+-      vs->msl_shaders[stage] = ralloc_size(NULL, length);
+-      memcpy(vs->msl_shaders[stage], s->msl_shaders[stage], length);
++      struct msl_compile_data *src_data = &s->msl_data[stage];
++      struct msl_compile_data *dst_data = &vs->msl_data[stage];
++      uint32_t length = strlen(src_data->code) + 1u;
++      dst_data->code = ralloc_size(NULL, length);
++      memcpy(dst_data->code, src_data->code, length);
+ 
+-      length = strlen(s->entrypoint_names[stage]) + 1;
+-      vs->entrypoint_names[stage] = ralloc_size(NULL, length);
+-      memcpy(vs->entrypoint_names[stage], s->entrypoint_names[stage], length);
++      length = strlen(src_data->entrypoint_name) + 1;
++      dst_data->entrypoint_name = ralloc_size(NULL, length);
++      memcpy(dst_data->entrypoint_name, src_data->entrypoint_name, length);
+ 
+       info->vs.additional_stages_bits |= BITFIELD_BIT(stage);
+ 
+@@ -1205,11 +1212,9 @@
+    uint32_t stages_bits = vs->info.vs.additional_stages_bits;
+    pipe->gfx.pre_render_count = util_bitcount(stages_bits) - 1u;
+    for (uint32_t i = 0u; i < pipe->gfx.pre_render_count; ++i) {
+-      const char *msl = vs->msl_shaders[vs_stage];
+-      const char *entrypoint_name = vs->entrypoint_names[vs_stage];
+       uint32_t local_thread_size =
+          (i == 0u) ? 64u : vs->info.vs.tess_local_thread_size;
+-      result = kk_compile_compute_pipeline(device, msl, entrypoint_name,
++      result = kk_compile_compute_pipeline(device, &vs->msl_data[vs_stage],
+                                            local_thread_size,
+                                            &pipe->gfx.pre_render[i]);
+ 
+@@ -1218,24 +1223,28 @@
+       vs_stage = u_bit_scan(&stages_bits);
+    }
+ 
+-   mtl_library *vertex_library =
+-      mtl_new_library(device->mtl_compiler_handle, vs->msl_shaders[vs_stage]);
++   const struct msl_compile_data *vs_data = &vs->msl_data[vs_stage];
++   mtl_library *vertex_library = mtl_new_library(
++      device->mtl_compiler_handle, vs_data->code, MTL_MATH_MODE_FAST,
++      MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST);
+    if (vertex_library == NULL)
+       return VK_ERROR_INVALID_SHADER_NV;
+ 
+    mtl_function_descriptor *vertex_function =
+       mtl_new_library_function_descriptor(vertex_library,
+-                                          vs->entrypoint_names[vs_stage]);
++                                          vs_data->entrypoint_name);
+ 
++   const struct msl_compile_data *fs_data = &vs->msl_data[MESA_SHADER_FRAGMENT];
+    mtl_library *fragment_library = mtl_new_library(
+-      device->mtl_compiler_handle, vs->msl_shaders[MESA_SHADER_FRAGMENT]);
++      device->mtl_compiler_handle, fs_data->code, MTL_MATH_MODE_FAST,
++      MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST);
+    if (fragment_library == NULL) {
+       result = VK_ERROR_INVALID_SHADER_NV;
+       goto destroy_vertex;
+    }
+    mtl_function_descriptor *fragment_function =
+-      mtl_new_library_function_descriptor(
+-         fragment_library, vs->entrypoint_names[MESA_SHADER_FRAGMENT]);
++      mtl_new_library_function_descriptor(fragment_library,
++                                          fs_data->entrypoint_name);
+ 
+    mtl_render_pipeline_descriptor *pipeline_descriptor =
+       mtl_new_render_pipeline_descriptor();
+@@ -1387,13 +1396,12 @@
+     */
+    if (shaders[0]->vk.stage == MESA_SHADER_COMPUTE) {
+       struct kk_shader *s = shaders[0];
+-      const char *msl = s->msl_shaders[MESA_SHADER_COMPUTE];
+-      const char *entrypoint_name = s->entrypoint_names[MESA_SHADER_COMPUTE];
+       uint32_t local_size_threads = s->info.cs.local_size.x *
+                                     s->info.cs.local_size.y *
+                                     s->info.cs.local_size.z;
+-      result = kk_compile_compute_pipeline(dev, msl, entrypoint_name,
+-                                           local_size_threads, &s->pipeline.cs);
++      result =
++         kk_compile_compute_pipeline(dev, &s->msl_data[MESA_SHADER_COMPUTE],
++                                     local_size_threads, &s->pipeline.cs);
+    } else {
+       gather_graphics_pipeline_create_info(state, shaders, total_shaders);
+       result = kk_compile_graphics_pipeline(dev, shaders[0]);
+@@ -1421,12 +1429,13 @@
+ kk_msl_serialize(struct kk_shader *shader, mesa_shader_stage stage,
+                  struct blob *blob)
+ {
+-   uint32_t entrypoint_length = strlen(shader->entrypoint_names[stage]) + 1;
+-   uint32_t code_length = strlen(shader->msl_shaders[stage]) + 1;
++   struct msl_compile_data *data = &shader->msl_data[stage];
++   uint32_t entrypoint_length = strlen(data->entrypoint_name) + 1;
++   uint32_t code_length = strlen(data->code) + 1;
+    blob_write_uint32(blob, entrypoint_length);
+    blob_write_uint32(blob, code_length);
+-   blob_write_bytes(blob, shader->entrypoint_names[stage], entrypoint_length);
+-   blob_write_bytes(blob, shader->msl_shaders[stage], code_length);
++   blob_write_bytes(blob, data->entrypoint_name, entrypoint_length);
++   blob_write_bytes(blob, data->code, code_length);
+ }
+ 
+ static bool
+@@ -1452,18 +1461,17 @@
+ {
+    const uint32_t entrypoint_length = blob_read_uint32(blob);
+    const uint32_t code_length = blob_read_uint32(blob);
+-   shader->entrypoint_names[stage] =
+-      ralloc_array(NULL, char, entrypoint_length);
+-   if (shader->entrypoint_names[stage] == NULL)
++   struct msl_compile_data *data = &shader->msl_data[stage];
++   data->entrypoint_name = ralloc_array(NULL, char, entrypoint_length);
++   if (data->entrypoint_name == NULL)
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+-   shader->msl_shaders[stage] = ralloc_array(NULL, char, code_length);
+-   if (shader->msl_shaders[stage] == NULL)
++   data->code = ralloc_array(NULL, char, code_length);
++   if (data->code == NULL)
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+-   blob_copy_bytes(blob, (void *)shader->entrypoint_names[stage],
+-                   entrypoint_length);
+-   blob_copy_bytes(blob, (void *)shader->msl_shaders[stage], code_length);
++   blob_copy_bytes(blob, (void *)data->entrypoint_name, entrypoint_length);
++   blob_copy_bytes(blob, (void *)data->code, code_length);
+ 
+    if (blob->overrun)
+       return VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT;
+@@ -1504,14 +1512,12 @@
+    }
+ 
+    if (info.stage == MESA_SHADER_COMPUTE) {
+-      const char *msl = shader->msl_shaders[MESA_SHADER_COMPUTE];
+-      const char *entrypoint_name =
+-         shader->entrypoint_names[MESA_SHADER_COMPUTE];
+       uint32_t local_size_threads = shader->info.cs.local_size.x *
+                                     shader->info.cs.local_size.y *
+                                     shader->info.cs.local_size.z;
+       result = kk_compile_compute_pipeline(
+-         dev, msl, entrypoint_name, local_size_threads, &shader->pipeline.cs);
++         dev, &shader->msl_data[MESA_SHADER_COMPUTE], local_size_threads,
++         &shader->pipeline.cs);
+    } else if (info.stage == MESA_SHADER_VERTEX) {
+       result = kk_compile_graphics_pipeline(dev, shader);
+    }
+Index: src/kosmickrisp/vulkan/kk_shader.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_shader.h b/src/kosmickrisp/vulkan/kk_shader.h
+--- a/src/kosmickrisp/vulkan/kk_shader.h	(revision 0c65165a29c4e10023248d2d7166fe00da36c84b)
++++ b/src/kosmickrisp/vulkan/kk_shader.h	(revision 91c414333ea22212155beeea67050f09a372076c)
+@@ -119,13 +119,17 @@
+    };
+ };
+ 
++struct msl_compile_data {
++   char *code;
++   char *entrypoint_name;
++};
++
+ struct kk_shader {
+    struct vk_shader vk;
+ 
+    struct kk_pipeline_handles pipeline;
+    struct kk_shader_info info;
+-   char *msl_shaders[MESA_SHADER_STAGES];
+-   char *entrypoint_names[MESA_SHADER_STAGES];
++   struct msl_compile_data msl_data[MESA_SHADER_STAGES];
+ };
+ 
+ VK_DEFINE_NONDISP_HANDLE_CASTS(kk_shader, vk.base, VkShaderEXT,
+Index: src/kosmickrisp/vulkan/kk_physical_device.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_physical_device.c b/src/kosmickrisp/vulkan/kk_physical_device.c
+--- a/src/kosmickrisp/vulkan/kk_physical_device.c	(revision 91c414333ea22212155beeea67050f09a372076c)
++++ b/src/kosmickrisp/vulkan/kk_physical_device.c	(revision 8820ff1340889d78129b534d7db33f595d65f52a)
+@@ -126,6 +126,7 @@
+       .KHR_map_memory2 = true,
+       .KHR_push_descriptor = true,
+       .KHR_shader_expect_assume = true,
++      .KHR_shader_float_controls2 = true,
+       .KHR_shader_subgroup_rotate = true,
+       .KHR_vertex_attribute_divisor = true,
+       .EXT_global_priority = true,
+@@ -332,6 +333,7 @@
+       .maintenance6 = true,
+       .pipelineRobustness = true,
+       .pushDescriptor = true,
++      .shaderFloatControls2 = true,
+       .shaderSubgroupRotate = true,
+       .shaderSubgroupRotateClustered = true,
+       .vertexAttributeInstanceRateDivisor = true,
+@@ -627,8 +629,8 @@
+       .conformanceVersion = (VkConformanceVersion){1, 4, 3, 2},
+       .denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE,
+       .roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE,
+-      .shaderSignedZeroInfNanPreserveFloat16 = false,
+-      .shaderSignedZeroInfNanPreserveFloat32 = false,
++      .shaderSignedZeroInfNanPreserveFloat16 = true,
++      .shaderSignedZeroInfNanPreserveFloat32 = true,
+       .shaderSignedZeroInfNanPreserveFloat64 = false,
+       .shaderDenormPreserveFloat16 = false,
+       .shaderDenormPreserveFloat32 = false,
+Index: src/kosmickrisp/vulkan/kk_cmd_buffer.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_cmd_buffer.c b/src/kosmickrisp/vulkan/kk_cmd_buffer.c
+--- a/src/kosmickrisp/vulkan/kk_cmd_buffer.c	(revision 4900a548dc0933135fdd0ae996c1e1a5393634c0)
++++ b/src/kosmickrisp/vulkan/kk_cmd_buffer.c	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
+@@ -53,6 +53,16 @@
+    util_dynarray_clear(&cmd->large_bos);
+ }
+ 
++static void
++kk_destroy_encoder_state(struct kk_encoder_state *es)
++{
++   assert(es->encoder == NULL);
++   assert(es->cmd_buf == NULL);
++
++   mtl_release(es->allocator);
++   es->allocator = NULL;
++}
++
+ static void
+ kk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
+ {
+@@ -61,9 +71,9 @@
+    struct kk_cmd_pool *pool = kk_cmd_buffer_pool(cmd);
+ 
+    mtl_release(cmd->argument_table);
+-   mtl_release(cmd->cs.allocator_post_gfx);
+-   mtl_release(cmd->cs.allocator_gfx);
+-   mtl_release(cmd->cs.allocator_pre_gfx);
++   kk_destroy_encoder_state(&cmd->cmp[0]);
++   kk_destroy_encoder_state(&cmd->cmp[1]);
++   kk_destroy_encoder_state(&cmd->gfx);
+ 
+    vk_command_buffer_finish(&cmd->vk);
+    struct kk_device *dev = kk_cmd_buffer_device(cmd);
+@@ -75,6 +85,13 @@
+    vk_free(&pool->vk.alloc, cmd);
+ }
+ 
++static bool
++kk_init_encoder_state(struct kk_encoder_state *es, mtl_device *handle)
++{
++   es->allocator = mtl_new_command_allocator(handle);
++   return es->allocator != NULL;
++}
++
+ static VkResult
+ kk_create_cmd_buffer(struct vk_command_pool *vk_pool,
+                      VkCommandBufferLevel level,
+@@ -100,15 +117,17 @@
+    if (result != VK_SUCCESS)
+       goto alloc_fail;
+ 
+-   cmd->cs.allocator_pre_gfx = mtl_new_command_allocator(dev->mtl_handle);
+-   if (!cmd->cs.allocator_pre_gfx)
++   cmd->pre_gfx = &cmd->cmp[0];
++   cmd->post_gfx = &cmd->cmp[1];
++   if (!kk_init_encoder_state(cmd->pre_gfx, dev->mtl_handle))
+       goto pre_gfx_allocator_fail;
+-   cmd->cs.allocator_gfx = mtl_new_command_allocator(dev->mtl_handle);
+-   if (!cmd->cs.allocator_gfx)
++
++   if (!kk_init_encoder_state(&cmd->gfx, dev->mtl_handle))
+       goto gfx_allocator_fail;
+-   cmd->cs.allocator_post_gfx = mtl_new_command_allocator(dev->mtl_handle);
+-   if (!cmd->cs.allocator_post_gfx)
++
++   if (!kk_init_encoder_state(cmd->post_gfx, dev->mtl_handle))
+       goto post_gfx_allocator_fail;
++
+    {
+       mtl_argument_table_descriptor *desc = mtl_new_argument_table_descriptor();
+       /* Root at 0, samplers at 1 and per draw data at 2 */
+@@ -132,9 +151,9 @@
+    return VK_SUCCESS;
+ 
+ post_gfx_allocator_fail:
+-   mtl_release(cmd->cs.allocator_gfx);
++   kk_destroy_encoder_state(&cmd->gfx);
+ gfx_allocator_fail:
+-   mtl_release(cmd->cs.allocator_pre_gfx);
++   kk_destroy_encoder_state(cmd->pre_gfx);
+ pre_gfx_allocator_fail:
+    vk_command_buffer_finish(&cmd->vk);
+    result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+@@ -143,6 +162,12 @@
+    return result;
+ }
+ 
++static void
++kk_reset_encoder_state(struct kk_encoder_state *es)
++{
++   mtl_command_allocator_reset(es->allocator);
++}
++
+ void
+ kk_reset_cmd_buffer_internal(struct kk_cmd_buffer *cmd)
+ {
+@@ -154,9 +179,9 @@
+    cs_end(cmd);
+    kk_cmd_release_resources(dev, cmd);
+ 
+-   mtl_command_allocator_reset(cmd->cs.allocator_pre_gfx);
+-   mtl_command_allocator_reset(cmd->cs.allocator_gfx);
+-   mtl_command_allocator_reset(cmd->cs.allocator_post_gfx);
++   kk_reset_encoder_state(cmd->pre_gfx);
++   kk_reset_encoder_state(&cmd->gfx);
++   kk_reset_encoder_state(cmd->post_gfx);
+ 
+    cmd->uploader.bo = NULL;
+    cmd->uploader.offset = 0;
+@@ -226,15 +251,14 @@
+ cs_start_render(struct kk_cmd_buffer *cmd)
+ {
+    struct kk_device *dev = kk_cmd_buffer_device(cmd);
+-   struct kk_cs *cs = &cmd->cs;
+    struct kk_graphics_state *state = &cmd->state.gfx;
+    uint32_t view_mask = state->render.view_mask;
+    assert(state->render_pass_descriptor);
+ 
+-   cs->cmd_buf_gfx = mtl_new_command_buffer(dev->mtl_handle);
+-   mtl_begin_command_buffer(cs->cmd_buf_gfx, cs->allocator_gfx);
+-   cs->gfx = mtl_new_render_command_encoder_with_descriptor(
+-      cs->cmd_buf_gfx, state->render_pass_descriptor);
++   cmd->gfx.cmd_buf = mtl_new_command_buffer(dev->mtl_handle);
++   mtl_begin_command_buffer(cmd->gfx.cmd_buf, cmd->gfx.allocator);
++   cmd->gfx.encoder = mtl_new_render_command_encoder_with_descriptor(
++      cmd->gfx.cmd_buf, state->render_pass_descriptor);
+ 
+    uint32_t layer_ids[KK_MAX_MULTIVIEW_VIEW_COUNT] = {};
+    uint32_t count = 0u;
+@@ -243,11 +267,11 @@
+    if (view_mask == 0u) {
+       layer_ids[count++] = 0;
+    }
+-   mtl_set_vertex_amplification_count(cs->gfx, layer_ids, count);
++   mtl_set_vertex_amplification_count(cmd->gfx.encoder, layer_ids, count);
+ 
+    /* Argument table won't ever change */
+    mtl_render_set_argument_table(
+-      cs->gfx, cmd->argument_table,
++      cmd->gfx.encoder, cmd->argument_table,
+       MTL_RENDER_STAGE_VERTEX | MTL_RENDER_STAGE_FRAGMENT);
+ 
+    kk_cmd_buffer_dirty_all_gfx(cmd);
+@@ -266,88 +290,83 @@
+       cs_start_render(cmd);
+    }
+ 
+-   return cmd->cs.gfx;
++   return cmd->gfx.encoder;
++}
++
++static void
++kk_start_compute_encoder(struct kk_encoder_state *es, mtl_device *handle,
++                         mtl_argument_table *argument_table)
++{
++   es->cmd_buf = mtl_new_command_buffer(handle);
++   mtl_begin_command_buffer(es->cmd_buf, es->allocator);
++   es->encoder = mtl_new_compute_command_encoder(es->cmd_buf);
++
++   /* Argument table won't ever change */
++   mtl_compute_set_argument_table(es->encoder, argument_table);
+ }
+ 
+ mtl_compute_encoder *
+ cs_get_compute(struct kk_cmd_buffer *cmd, bool pre_gfx)
+ {
+    struct kk_device *dev = kk_cmd_buffer_device(cmd);
+-   struct kk_cs *cs = &cmd->cs;
+    mtl_compute_encoder *encoder;
+    /* If we are not inside a render, we can just take pre_gfx. */
+-   if (!cs->gfx || pre_gfx) {
+-      if (!cs->pre_gfx) {
+-         cs->cmd_buf_pre_gfx = mtl_new_command_buffer(dev->mtl_handle);
+-         mtl_begin_command_buffer(cs->cmd_buf_pre_gfx, cs->allocator_pre_gfx);
+-         cs->pre_gfx = mtl_new_compute_command_encoder(cs->cmd_buf_pre_gfx);
+-
+-         /* Argument table won't ever change */
+-         mtl_compute_set_argument_table(cs->pre_gfx, cmd->argument_table);
++   if (!cmd->gfx.encoder || pre_gfx) {
++      if (!cmd->pre_gfx->encoder) {
++         kk_start_compute_encoder(cmd->pre_gfx, dev->mtl_handle,
++                                  cmd->argument_table);
+       }
+-      encoder = cs->pre_gfx;
++      encoder = cmd->pre_gfx->encoder;
+    } else {
+-      if (!cs->post_gfx) {
+-         cs->cmd_buf_post_gfx = mtl_new_command_buffer(dev->mtl_handle);
+-         mtl_begin_command_buffer(cs->cmd_buf_post_gfx, cs->allocator_post_gfx);
+-         cs->post_gfx = mtl_new_compute_command_encoder(cs->cmd_buf_post_gfx);
+-
+-         /* Argument table won't ever change */
+-         mtl_compute_set_argument_table(cs->post_gfx, cmd->argument_table);
++      if (!cmd->post_gfx->encoder) {
++         kk_start_compute_encoder(cmd->post_gfx, dev->mtl_handle,
++                                  cmd->argument_table);
+       }
+-      encoder = cs->post_gfx;
++      encoder = cmd->post_gfx->encoder;
+    }
+ 
+    return encoder;
+ }
+ 
++static void
++kk_stop_encoder(struct kk_cmd_buffer *cmd, struct kk_encoder_state *es)
++{
++   /* TODO_KOSMICKRISP This is probably overkill */
++   mtl_barrier_after_stages(es->encoder, MTL_STAGE_ALL, MTL_STAGE_ALL);
++   mtl_end_encoding(es->encoder);
++   mtl_release(es->encoder);
++   es->encoder = NULL;
++
++   mtl_end_command_buffer(es->cmd_buf);
++
++   util_dynarray_append(&cmd->submit_cmd_bufs, es->cmd_buf);
++   es->cmd_buf = NULL;
++}
++
+ void
+ cs_end(struct kk_cmd_buffer *cmd)
+ {
+    assert(cmd);
+-   struct kk_cs *cs = &cmd->cs;
+ 
+-   if (cs->pre_gfx) {
+-      /* TODO_KOSMICKRISP This is probably overkill */
+-      mtl_barrier_after_stages(cs->pre_gfx, MTL_STAGE_ALL, MTL_STAGE_ALL);
+-      mtl_end_encoding(cs->pre_gfx);
+-      mtl_release(cs->pre_gfx);
+-      mtl_end_command_buffer(cs->cmd_buf_pre_gfx);
+-
++   if (cmd->pre_gfx->encoder) {
+       /* Submit pre_gfx now that its encoder is closed. Command buffers are
+        * appended here (rather than at creation) so submit_cmd_bufs stays in
+        * encode order: pre_gfx first, then gfx below. post_gfx is promoted into
+        * the pre_gfx slot with its encoder still open, so it is submitted by a
+        * later cs_end() and therefore always ends up after gfx. This is why
+        * every flush site calls cs_end() twice. */
+-      util_dynarray_append(&cmd->submit_cmd_bufs, cs->cmd_buf_pre_gfx);
+-      cs->cmd_buf_pre_gfx = cs->cmd_buf_post_gfx;
+-      cs->cmd_buf_post_gfx = NULL;
+-      cs->pre_gfx = cs->post_gfx;
+-      cs->post_gfx = NULL;
+-      SWAP(cs->allocator_pre_gfx, cs->allocator_post_gfx);
+-   } else if (cs->post_gfx) {
++      kk_stop_encoder(cmd, cmd->pre_gfx);
++
++      SWAP(cmd->pre_gfx, cmd->post_gfx);
++   } else if (cmd->post_gfx->encoder) {
+       /* No pre_gfx, but a post_gfx exists (e.g. compute issued during a render
+        * pass). Promote it so a later cs_end() closes and submits it after the
+        * gfx command buffer appended below. */
+-      cs->cmd_buf_pre_gfx = cs->cmd_buf_post_gfx;
+-      cs->cmd_buf_post_gfx = NULL;
+-      cs->pre_gfx = cs->post_gfx;
+-      cs->post_gfx = NULL;
+-      SWAP(cs->allocator_pre_gfx, cs->allocator_post_gfx);
++      SWAP(cmd->pre_gfx, cmd->post_gfx);
+    }
+ 
+-   if (cs->gfx) {
+-      /* TODO_KOSMICKRISP This is probably overkill */
+-      mtl_barrier_after_stages(cs->gfx, MTL_STAGE_ALL, MTL_STAGE_ALL);
+-      mtl_end_encoding(cs->gfx);
+-      mtl_release(cs->gfx);
+-      mtl_end_command_buffer(cs->cmd_buf_gfx);
+-
+-      /* Same as above: register after the encoder is closed. */
+-      util_dynarray_append(&cmd->submit_cmd_bufs, cs->cmd_buf_gfx);
+-      cs->cmd_buf_gfx = NULL;
+-      cs->gfx = NULL;
++   if (cmd->gfx.encoder) {
++      kk_stop_encoder(cmd, &cmd->gfx);
+    }
+ }
+ 
+@@ -368,14 +387,14 @@
+     * barrier. This requires to read directly from the framebuffer which
+     * requires not reading input attachments as textures.
+     */
+-   if (cmd->cs.gfx) {
++   if (cmd->gfx.encoder) {
+       cs_end(cmd);
+       cs_start_render(cmd);
+-   } else if (cmd->cs.pre_gfx) {
++   } else if (cmd->pre_gfx->encoder) {
+       /* We chain encoders, so an intra-encoder barrier is enough here:
+        * no need to tear down and recreate the encoder.
+        */
+-      mtl_barrier_after_encoder_stages(cmd->cs.pre_gfx,
++      mtl_barrier_after_encoder_stages(cmd->pre_gfx->encoder,
+                                        MTL_STAGE_DISPATCH | MTL_STAGE_BLIT,
+                                        MTL_STAGE_DISPATCH | MTL_STAGE_BLIT);
+    }
+@@ -732,10 +751,9 @@
+ void
+ kk_cmd_write(struct kk_cmd_buffer *cmd, struct libkk_imm_write write)
+ {
+-   struct kk_cs *cs = &cmd->cs;
+-
+    /* If we are mid render, it must go to post_gfx */
+-   libkk_write_u32(cmd, kk_grid_1d(1), !cs->gfx, write.address, write.value);
++   libkk_write_u32(cmd, kk_grid_1d(1), !cmd->gfx.encoder, write.address,
++                   write.value);
+ }
+ 
+ VKAPI_ATTR void VKAPI_CALL
+Index: src/kosmickrisp/vulkan/kk_cmd_buffer.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_cmd_buffer.h b/src/kosmickrisp/vulkan/kk_cmd_buffer.h
+--- a/src/kosmickrisp/vulkan/kk_cmd_buffer.h	(revision 4900a548dc0933135fdd0ae996c1e1a5393634c0)
++++ b/src/kosmickrisp/vulkan/kk_cmd_buffer.h	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
+@@ -197,22 +197,22 @@
+    uint32_t offset;
+ };
+ 
+-struct kk_cs {
+-   mtl_command_allocator *allocator_pre_gfx;
+-   mtl_command_buffer *cmd_buf_pre_gfx;
+-   mtl_compute_encoder *pre_gfx;
+-   mtl_command_allocator *allocator_gfx;
+-   mtl_command_buffer *cmd_buf_gfx;
+-   mtl_render_encoder *gfx;
+-   mtl_command_allocator *allocator_post_gfx;
+-   mtl_command_buffer *cmd_buf_post_gfx;
+-   mtl_compute_encoder *post_gfx;
++struct kk_encoder_state {
++   /* either a mtl_compute_encoder or a mtl_render_encoder */
++   mtl_command_encoder *encoder;
++   mtl_command_allocator *allocator;
++   mtl_command_buffer *cmd_buf;
+ };
+ 
+ struct kk_cmd_buffer {
+    struct vk_command_buffer vk;
+ 
+-   struct kk_cs cs;
++   struct kk_encoder_state gfx;
++   /* pre and post gfx encoder states swap after every gfx encoder is committed */
++   struct kk_encoder_state cmp[2];
++   struct kk_encoder_state *pre_gfx;
++   struct kk_encoder_state *post_gfx;
++
+    void *drawable;
+    mtl_argument_table *argument_table;
+ 
+Index: src/kosmickrisp/vulkan/kk_cmd_draw.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_cmd_draw.c b/src/kosmickrisp/vulkan/kk_cmd_draw.c
+--- a/src/kosmickrisp/vulkan/kk_cmd_draw.c	(revision 4900a548dc0933135fdd0ae996c1e1a5393634c0)
++++ b/src/kosmickrisp/vulkan/kk_cmd_draw.c	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
+@@ -905,7 +905,7 @@
+    }
+    /* If render pass state changes and the pass is currently active, end the
+     * current encoder and prepare to restart it */
+-   bool active_render = cmd->cs.gfx;
++   bool active_render = cmd->gfx.encoder != NULL;
+    if (needs_restart && active_render) {
+       cs_end(cmd);
+       kk_cmd_buffer_dirty_all_gfx(cmd);
+Index: src/kosmickrisp/vulkan/kk_cmd_meta.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/kosmickrisp/vulkan/kk_cmd_meta.c b/src/kosmickrisp/vulkan/kk_cmd_meta.c
+--- a/src/kosmickrisp/vulkan/kk_cmd_meta.c	(revision 4900a548dc0933135fdd0ae996c1e1a5393634c0)
++++ b/src/kosmickrisp/vulkan/kk_cmd_meta.c	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
+@@ -277,7 +277,7 @@
+ 
+    uint32_t view_mask = cmd->state.gfx.render.view_mask;
+    uint32_t layer_ids[KK_MAX_MULTIVIEW_VIEW_COUNT] = {};
+-   mtl_set_vertex_amplification_count(cmd->cs.gfx, layer_ids, 1u);
++   mtl_set_vertex_amplification_count(cmd->gfx.encoder, layer_ids, 1u);
+ 
+    /* Preserve conditional rendering state for clearing attachments */
+    struct kk_conditional_rendering_state cond_render = cmd->state.cond_render;
+@@ -295,7 +295,7 @@
+    if (view_mask == 0u) {
+       layer_ids[count++] = 0;
+    }
+-   mtl_set_vertex_amplification_count(cmd->cs.gfx, layer_ids, count);
++   mtl_set_vertex_amplification_count(cmd->gfx.encoder, layer_ids, count);
+ }
+ 
+ void
+Index: docs/drivers/kosmickrisp/workarounds.rst
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/docs/drivers/kosmickrisp/workarounds.rst b/docs/drivers/kosmickrisp/workarounds.rst
+--- a/docs/drivers/kosmickrisp/workarounds.rst	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
++++ b/docs/drivers/kosmickrisp/workarounds.rst	(revision 8820ff1340889d78129b534d7db33f595d65f52a)
+@@ -49,6 +49,21 @@
+ Workarounds
+ ===========
+ 
++KK_WORKAROUND_14
++----------------
++| macOS version: 26.5, 27.0 beta 1
++| Metal ticket status: Not reported
++| CTS test failure: dEQP-VK.spirv_assembly.instruction.*.float_controls2.fp*
++| Comments:
++
++Metal compiler will fold "NAN * 0.0" to "0.0" and "0.0 < abs(NAN)" to "true"
++even under blocks with pragma relaxed when the "0.0" value is constant even
++if relaxed mode preserves NAN values. Work around this by adding an always
++true conditional for multiplies such that "(false value) ? 1.0 : NAN * 0.0"
++and checking for NAN in conditionals such that "!isnan(x) && !isnan(y) && x == y"
++for less than, greater equal than and equal, while using OR and removing
++negation for not equal.
++
+ KK_WORKAROUND_13
+ ----------------
+ | macOS version: 26.5, 27.0 beta 1
+Index: docs/features.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/docs/features.txt b/docs/features.txt
+--- a/docs/features.txt	(revision e2edea003c1572e6dfdf716a5c2b02f86316facb)
++++ b/docs/features.txt	(revision 8820ff1340889d78129b534d7db33f595d65f52a)
+@@ -528,7 +528,7 @@
+   VK_KHR_map_memory2                                    DONE (anv, kk, lvp, nvk, panvk, pvr, radv, tu, vn)
+   VK_KHR_push_descriptor                                DONE (anv, hasvk, kk, lvp, nvk, panvk, radv, tu, vn)
+   VK_KHR_shader_expect_assume                           DONE (anv, dzn, hasvk, kk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
+-  VK_KHR_shader_float_controls2                         DONE (anv, lvp, nvk, panvk/v10+, radv, tu, vn)
++  VK_KHR_shader_float_controls2                         DONE (anv, kk, lvp, nvk, panvk/v10+, radv, tu, vn)
+   VK_KHR_shader_subgroup_rotate                         DONE (anv, kk, lvp, nvk, panvk, radv, tu, vn)
+   VK_KHR_vertex_attribute_divisor                       DONE (anv, kk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
+   VK_EXT_host_image_copy                                DONE (anv, kk, lvp, nvk/Turing+, panvk, radv/gfx10+, tu, vn)
