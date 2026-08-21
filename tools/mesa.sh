@@ -41,9 +41,12 @@ cat brew-llvm.ini
 
 mkdir -p build src
 
-_commit=bcf312ff5c0d32dd6a80370a51929179613a0ff9
-git clone https://gitlab.freedesktop.org/mesa/mesa src/mesa
-cd src/mesa && git checkout $_commit && git apply -v ../../patches/*.patch && cd ../..
+_branch=kk/26.2
+_url_primary=https://github.com/Kenji-NX/mesa
+_url_fallback=https://gitlab.com/kenji-nx/mesa
+git clone -b $_branch --single-branch $_url_primary src/mesa \
+  || git clone -b $_branch --single-branch $_url_fallback src/mesa
+cd src/mesa && git checkout $_branch && cd ../..
 
 _src="$PWD/src/mesa"
 _build="$PWD/build/mesa"
