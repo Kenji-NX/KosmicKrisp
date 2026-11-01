@@ -41,10 +41,10 @@ cat brew-llvm.ini
 
 cat << EOF > ios.ini
 [binaries]
-c      = ['xcrun', '-sdk', 'iphoneos', 'clang', '-target', 'arm64-apple-ios26.0']
-cpp    = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-target', 'arm64-apple-ios26.0']
-objc   = ['xcrun', '-sdk', 'iphoneos', 'clang', '-target', 'arm64-apple-ios26.0']
-objcpp = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-target', 'arm64-apple-ios26.0']
+c      = ['xcrun', '-sdk', 'iphoneos', 'clang']
+cpp    = ['xcrun', '-sdk', 'iphoneos', 'clang++']
+objc   = ['xcrun', '-sdk', 'iphoneos', 'clang']
+objcpp = ['xcrun', '-sdk', 'iphoneos', 'clang++']
 ar     = ['xcrun', '-sdk', 'iphoneos', 'ar']
 ranlib = ['xcrun', '-sdk', 'iphoneos', 'ranlib']
 strip  = ['xcrun', '-sdk', 'iphoneos', 'strip']
@@ -57,10 +57,21 @@ needs_exe_wrapper = true
 [host_machine]
 system = 'darwin'
 subsystem = 'ios'
+kernel = 'xnu'
 cpu_family = 'aarch64'
 cpu = 'arm64'
 endian = 'little'
+
+[built-in options]
+c_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
+cpp_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
+objc_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
+objcpp_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
+c_link_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
+cpp_link_args = ['-arch', 'arm64', '-miphoneos-version-min=26.0']
 EOF
+
+cat ios.ini
 
 mkdir -p build src
 
