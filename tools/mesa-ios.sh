@@ -41,10 +41,10 @@ cat brew-llvm.ini
 
 cat << EOF > ios.ini
 [binaries]
-c      = ['xcrun', '-sdk', 'iphoneos', 'clang', '-arch', 'arm64']
-cpp    = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-arch', 'arm64']
-objc   = ['xcrun', '-sdk', 'iphoneos', 'clang', '-arch', 'arm64']
-objcpp = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-arch', 'arm64']
+c      = ['xcrun', '-sdk', 'iphoneos', 'clang', '-target', 'arm64-apple-ios26.0']
+cpp    = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-target', 'arm64-apple-ios26.0']
+objc   = ['xcrun', '-sdk', 'iphoneos', 'clang', '-target', 'arm64-apple-ios26.0']
+objcpp = ['xcrun', '-sdk', 'iphoneos', 'clang++', '-target', 'arm64-apple-ios26.0']
 ar     = ['xcrun', '-sdk', 'iphoneos', 'ar']
 ranlib = ['xcrun', '-sdk', 'iphoneos', 'ranlib']
 strip  = ['xcrun', '-sdk', 'iphoneos', 'strip']
@@ -60,14 +60,6 @@ subsystem = 'ios'
 cpu_family = 'aarch64'
 cpu = 'arm64'
 endian = 'little'
-
-[built-in options]
-c_args      = ['-miphoneos-version-min=26.0']
-cpp_args    = ['-miphoneos-version-min=26.0']
-objc_args   = ['-miphoneos-version-min=26.0']
-objcpp_args = ['-miphoneos-version-min=26.0']
-c_link_args = ['-miphoneos-version-min=26.0']
-cpp_link_args = ['-miphoneos-version-min=26.0']
 EOF
 
 mkdir -p build src
@@ -123,9 +115,12 @@ meson setup "$_build_native" "$_src" \
     -D install-precomp-compiler=true
 
 meson install -C "$_build_native"
+rm -f "$_out_native"/lib/libvulkan_kosmickrisp*.dylib
+rm -rf "$_out_native"/share/vulkan
 export PATH="$_out_native/bin:$PATH"
 
 unset CC CXX AR NM RANLIB STRIP LD CFLAGS CXXFLAGS LDFLAGS LIBRARY_PATH
+rm -rf "$_build"
 
 # Stage 2: Cross-compile to iOS
 meson setup "$_build" "$_src" \
