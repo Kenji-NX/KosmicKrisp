@@ -41,7 +41,7 @@ cat brew-llvm.ini
 
 mkdir -p build src
 
-_branch=kk/26.2
+_branch=kk/26.3
 _url_primary=https://github.com/Kenji-NX/mesa
 _url_fallback=https://gitlab.com/kenji-nx/mesa
 git clone -b $_branch --single-branch $_url_primary src/mesa \

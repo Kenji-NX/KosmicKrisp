@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  VERSION: '26.2.5-ryu.1'
+  VERSION: '26.3.0-ryu.1'
 
 jobs:
   build:
