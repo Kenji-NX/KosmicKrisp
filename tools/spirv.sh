@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-_commit=0539c81f69a3daeb706fd3477dca61435b475156
+_commit=ef96ed763b43b59b33b31b362f09a02b729fa1c9
 _repo=KhronosGroup/SPIRV-Tools
 _dir=SPIRV-Tools-$_commit
 _artifact=$_commit.tar.gz
@@ -8,7 +8,7 @@ _url=https://github.com/$_repo/archive/$_artifact
 
 CCACHE="$(which ccache)"
 
-_version="1.4.350.1"
+_version="1.4.363.0"
 _tag="vulkan-sdk-$_version"
 _src="$PWD"/src
 _build="$PWD"/build/$_dir
